@@ -1,0 +1,27 @@
+# ROS2 Python project .gitignore
+# Build, install, and log directories
+build/
+install/
+log/
+
+# Python cache and egg-info
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+*.egg-info/
+*.eggs/
+
+# Colcon files
+colcon*
+
+# VS Code settings
+.vscode/
+
+# Misc
+*.swp
+*.bak
+*.tmp
+
+# Ignore test logs
+src/vision/test/*.log
