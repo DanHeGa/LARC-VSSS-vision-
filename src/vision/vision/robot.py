@@ -1,4 +1,6 @@
 class Robot:
+    #Check class usability, it could be used for using an array of detcted robots in a frame
+    # and then send the transform of each robot object
     def __init__(self, id, x, y, orientation, port):
         self.id = id
         self.x = x
