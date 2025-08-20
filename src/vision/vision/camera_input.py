@@ -17,7 +17,7 @@ class CameraFrames(Node):
         """Initialize the camera frame publisher."""
         super().__init__('camera_frames')
         self.bridge = CvBridge()
-        self.video_id = self.declare_parameter("Video_ID", 1)
+        self.video_id = self.declare_parameter("Video_ID", 2)
         self.publisher_ = self.create_publisher(
             Image, CAMERA_TOPIC, 10
         )

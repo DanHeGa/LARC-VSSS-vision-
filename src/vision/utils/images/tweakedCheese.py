@@ -13,10 +13,10 @@ while True:
     if not success:
         print("Failed to capture image")
         break
-    cut = cv2.resize(frame, (640, 480))
-    cv2.imshow("Webcam Feed", cut)
+    # cut = cv2.resize(frame, (640, 480))
+    cv2.imshow("Webcam Feed", frame)
     key = cv2.waitKey(1) & 0xFF 
-    # print("shape" + str(cut.shape))
+    print("shape" + str(frame.shape))
 
     if key == ord('q'):
         break
