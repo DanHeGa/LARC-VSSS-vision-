@@ -21,6 +21,7 @@ setup(
     entry_points={
         'console_scripts': [
             'camera_input = vision.camera_input:main',
+            'image_warp = vision.imageWarp:main'
         ],
     },
 )
