@@ -8,6 +8,8 @@ from .vision_constants import (
     CAMERA_TOPIC
 )
 
+#TODO: Fix it because it only shows a black image
+
 width = 640
 height = 480
 objectivePoints = np.float32([[0, height], [0,0], [width, 0], [width, height]])
