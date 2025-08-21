@@ -4,7 +4,8 @@ import cv2
 from .vision_constants import (
     CAMERA_TOPIC,
     YOLO_LOCATION,
-    CONF_THRESH
+    CONF_THRESH,
+    MODEL_VIEW_TOPIC
 )
 
 import rclpy 
@@ -24,6 +25,9 @@ class CameraDetections(Node):
         self.yolo_model = YOLO(YOLO_LOCATION)  # Uncomment when YOLO/model is ready
         self.camera_view = self.create_subscription(
             Image, CAMERA_TOPIC, self.image_callback, 10
+        )
+        self.model_view = self.create_publisher(
+            Image, MODEL_VIEW_TOPIC, 10
         )
         self.image = None
         self.tf_broadcaster = TransformBroadcaster(self)
@@ -71,6 +75,7 @@ class CameraDetections(Node):
                     angle_degrees = 180 #DUMMY ANGLE, IMPLEMENT LOGIC FOR ANGLES
                     yaw = math.radians(angle_degrees)
                     roll, pitch = 0.0, 0.0
+                    #------------------------------------------------------------------------
 
                     self.tf_helper(id, x, y, roll, pitch, yaw)
 
