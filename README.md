@@ -65,7 +65,7 @@ Update the package and node name as appropriate for your implementation.
   ├── test
   ├── utils
   ├── vision
-├── launch/             # ROS2 launch files
+├── launch/             
 ├── .gitignore
 ├── README.md
 ```
