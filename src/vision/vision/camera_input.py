@@ -37,7 +37,8 @@ class CameraFrames(Node):
             
             image = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')
             self.publisher_.publish(image)
-            cv2.imshow("Camera Feed", frame)
+            frame_resized = cv2.resize(frame, None, fx=0.5, fy=0.5)
+            cv2.imshow("Camera Feed", frame_resized)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
         self.cap.release()
