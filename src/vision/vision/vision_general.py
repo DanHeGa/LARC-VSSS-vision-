@@ -70,12 +70,13 @@ class CameraDetections(Node):
             return None
         frame = self.image.copy()
         results = self.yolo_model(frame, verbose=False, classes=0)
+        id_track = -1
         for result in results:
             for box in result.boxes:
                 x, y, w, h = [round(i) for i in box.xywh[0].tolist()]
                 confidence = box.conf.item()
                 if confidence > CONF_THRESH:
-                    id = box.id
+                    id = id_track + 1
                     #Robot position ---------------------------------------------------------
                     x_center = (x + w) / 2 #this is a problem
                     y_center = (y + h) / 2
