@@ -13,11 +13,12 @@ from .vision_constants import (
 
 width = 640
 height = 480
-objectivePoints = np.float32([[0, height], [0,0], [width, 0], [width, height]])
+
+objectivePoints = np.float32([[0, 0], [0,height], [width, height], [width, 0]])
 real_field_coors = [[0,0],
-                    [150, 0],
+                    [0, 130],
                     [150, 130],
-                    [0, 130]]
+                    [150, 0]]
 
 clicked_points = []
 coors_clicked = []
@@ -107,15 +108,17 @@ class ImageWarpChange(Node):
             
             if len(coors_clicked) > 0 and self.homography is not None:
                 pt = np.array([[[coors_clicked[0][0], coors_clicked[0][1]]]], dtype=np.float32)
+                #because after warp used, reference system changed, so we need to inv to get the original one 
                 inverse_perspective = np.linalg.inv(self.perspectiveMatrix)
                 pt_original = cv2.perspectiveTransform(pt, inverse_perspective)
-                x_img, y_img = pt_original[0][0]  # Coordenadas en imagen original (OpenCV)
+                x_img, y_img = pt[0][0]  # Coordenadas en imagen original (OpenCV)
 
                 pt_transformed = cv2.perspectiveTransform(pt_original, self.homography)
                 x_real, y_real = pt_transformed[0][0]  # Coordenadas reales del campo
                 
                 #with non-opencv axis policy
                 cv2.putText(warped_img, f"Real: ({x_real:.1f}, {y_real:.1f})", (50, 50), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
+                cv2.putText(warped_img, f"Pixeles: ({x_img:.1f}, {y_img:.1f})", (50, 90), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
             
             cv2.imshow("Warped", warped_img)
             cv2.waitKey(1) 
