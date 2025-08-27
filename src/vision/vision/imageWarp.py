@@ -14,7 +14,7 @@ width = 640
 height = 480
 objectivePoints = np.float32([[0, height], [0,0], [width, 0], [width, height]])
 real_field_coors = [[0,0],
-                    [130, 0],
+                    [150, 0],
                     [150, 130],
                     [0, 130]]
 
@@ -45,15 +45,19 @@ def getHomography(img, realCoor):
     Returns:
         ndarray: Homography matrix mapping pixel coordinates to real-world coordinates.
     """
+    global clicked_points
+    clicked_points = []
+
     cv2.namedWindow("Calibration")
     cv2.setMouseCallback("Calibration", mouse_callback)
 
     while(len(clicked_points) < 4):
-        cv2.putText(img, f"Click on Point {len(clicked_points) + 1} out of 4", (50, 50), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
+        img_copy = img.copy()
+        cv2.putText(img_copy, f"Click on Point {len(clicked_points) + 1} out of 4", (50, 50), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
 
         for pt in clicked_points:
-            cv2.circle(img, pt, 2, (0, 0, 255), -1)
-        cv2.imshow("Calibration", img)
+            cv2.circle(img_copy, pt, 2, (0, 0, 255), -1)
+        cv2.imshow("Calibration", img_copy)
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             raise Exception("Calibration aborted")
@@ -64,8 +68,20 @@ def getHomography(img, realCoor):
     realCoors = np.array(realCoor, dtype=np.float32)
 
     H, _ = cv2.findHomography(pxCoors, realCoors, cv2.RANSAC, 5.0)
+    np.save("homography.npy", H)
     
     return H
+
+def warpMatrix():
+    """
+    Computes the perspective transformation matrix for warping the image.
+    
+    Returns:
+        ndarray: Perspective transformation matrix.
+    """
+    clicked_original = np.array(clicked_points, dtype=np.float32)
+    matrix = cv2.getPerspectiveTransform(clicked_original, objectivePoints)
+    return matrix
 
 class ImageWarpChange(Node):
     def __init__(self):
@@ -80,17 +96,21 @@ class ImageWarpChange(Node):
             10
         )
         self.homography = None
+        self.perspectiveMatrix = None
 
     def image_callback(self, data):
         cv_img = self.bridge.imgmsg_to_cv2(data, desired_encoding='bgr8')
+        frame_resized = cv2.resize(cv_img, None, fx=0.5, fy=0.5)
         if self.homography is not None:
-            print(f"Matrix {self.homography}")
-            warped_img = cv2.warpPerspective(cv_img, self.homography, (640, 480)) #see if it's better to have 640, 480
+            print(f"Homography -> {self.homography}")
+            warped_img = cv2.warpPerspective(frame_resized, self.perspectiveMatrix, (640, 480)) #see if it's better to have 640, 480
             cv2.imshow("Warped", warped_img)
+            cv2.waitKey(1) 
             warped_img = self.bridge.cv2_to_imgmsg(warped_img, encoding='bgr8')
             self.publisher.publish(warped_img)
         else:
-            self.homography = getHomography(cv_img, real_field_coors)
+            self.homography = getHomography(frame_resized, real_field_coors)
+            self.perspectiveMatrix = warpMatrix()
 
 
 def main(args=None):
