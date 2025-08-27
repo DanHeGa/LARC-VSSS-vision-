@@ -5,7 +5,8 @@ from cv_bridge import CvBridge
 import cv2
 import numpy as np
 from .vision_constants import (
-    CAMERA_TOPIC
+    CAMERA_TOPIC,
+    WARPED_VIEW_TOPIC
 )
 
 #TODO: Fix it because it only shows a black image
@@ -90,7 +91,7 @@ class ImageWarpChange(Node):
         )
         self.publisher = self.create_publisher(
             Image, 
-            'camera/warped_img',
+            WARPED_VIEW_TOPIC,
             10
         )
         self.homography = None

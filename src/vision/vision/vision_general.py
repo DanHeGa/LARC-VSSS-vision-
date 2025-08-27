@@ -2,10 +2,10 @@
 
 import cv2
 from .vision_constants import (
-    CAMERA_TOPIC, 
     YOLO_LOCATION,
     CONF_THRESH,
-    MODEL_VIEW_TOPIC
+    MODEL_VIEW_TOPIC,
+    WARPED_VIEW_TOPIC
 )
 
 import rclpy 
@@ -25,7 +25,7 @@ class CameraDetections(Node):
         self.bridge = CvBridge()
         self.yolo_model = YOLO(YOLO_LOCATION)  # Uncomment when YOLO/model is ready
         self.camera_view = self.create_subscription(
-            Image, CAMERA_TOPIC, self.image_callback, 10
+            Image, WARPED_VIEW_TOPIC, self.image_callback, 10
         )
         self.model_view = self.create_publisher(
             Image, MODEL_VIEW_TOPIC, 10
@@ -33,13 +33,12 @@ class CameraDetections(Node):
         self.image = None
         self.tf_broadcaster = TransformBroadcaster(self)
         self.homography = np.load("homography.npy")
+        self.get_logger().info("Starting model node/general vision node")
         #self.timer = self.create_timer(0.1, self.timer_callback)
 
     def image_callback(self, data):
         """Callback to receive image from camera"""
         self.image = self.bridge.imgmsg_to_cv2(data, desired_encoding='bgr8')
-        msg = self.bridge.cv2_to_imgmsg(self.image, encoding='bgr8')
-        self.model_view.publish(msg)
         self.model_use()
 
     def tf_helper(self, robot_id, x, y, roll, pitch, yaw):
@@ -65,41 +64,49 @@ class CameraDetections(Node):
         x_field, y_field = pt_field[0][0]
         return x_field, y_field
 
-
     def model_use(self):
         if self.image is None:
             self.get_logger().warn("No image received yet")
             return None
-        
-        frame = self.image
-        results = self.yolo_model(frame, verbose=False, classes=0, tracker="bytetrack.yaml")
-        
+        frame = self.image.copy()
+        results = self.yolo_model(frame, verbose=False, classes=0)
         for result in results:
             for box in result.boxes:
                 x, y, w, h = [round(i) for i in box.xywh[0].tolist()]
                 confidence = box.conf.item()
-
-
                 if confidence > CONF_THRESH:
-                    id = box.id.item()
+                    id = box.id
                     #Robot position ---------------------------------------------------------
-                    x_center = (x + w) / 2
+                    x_center = (x + w) / 2 #this is a problem
                     y_center = (y + h) / 2
 
-                    #Convert to field coordinates
-                    x_field, y_field = self.image_to_field(x_center, y_center, self.homography)
+                    x1 = int(x - w / 2)
+                    y1 = int(y - h / 2)
+                    x2 = int(x + w / 2)
+                    y2 = int(y + h / 2)
 
+                    # Dibuja el bounding box
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    # Opcional: muestra la confianza
+                    conf_text = f"{confidence:.2f}"
+                    cv2.putText(frame, conf_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                    cv2.circle(frame, (int(x_center), int(y_center)), 8, (0, 0, 255), -1)
+                    #Convert to field coordinates - this may be the problem !!
+                    x_field, y_field = self.image_to_field(x_center, y_center, self.homography)
                     text = f"({x_field:.1f}, {y_field:.1f})"
                     cv2.putText(frame, text, (int(x_center), int(y_center)),cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
-                    
                     #GET ORIENTATION --------------------------------------------------------
                     angle_degrees = 180 #DUMMY ANGLE, IMPLEMENT LOGIC FOR ANGLES
                     yaw = math.radians(angle_degrees)
                     roll, pitch = 0.0, 0.0
                     #------------------------------------------------------------------------
-                    
                     #Send robot transforms
                     self.tf_helper(id, x_center, y_center, roll, pitch, yaw)
+        # Mostrar el frame anotado siempre, aunque no haya detecciones
+        cv2.imshow("Model", frame)
+        cv2.waitKey(1)
+        msg = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')
+        self.model_view.publish(msg)
 
 def main(args=None):
     rclpy.init(args=args)
