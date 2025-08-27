@@ -2,7 +2,7 @@
 
 import cv2
 from .vision_constants import (
-    CAMERA_TOPIC,
+    CAMERA_TOPIC, 
     YOLO_LOCATION,
     CONF_THRESH,
     MODEL_VIEW_TOPIC
@@ -17,6 +17,7 @@ from tf2_ros import TransformBroadcaster
 from geometry_msgs.msg import TransformStamped
 import transforms3d.euler as euler
 import math
+import numpy as np
 
 class CameraDetections(Node):
     def __init__(self):
@@ -31,6 +32,7 @@ class CameraDetections(Node):
         )
         self.image = None
         self.tf_broadcaster = TransformBroadcaster(self)
+        self.homography = np.load("homography.npy")
         #self.timer = self.create_timer(0.1, self.timer_callback)
 
     def image_callback(self, data):
@@ -57,29 +59,47 @@ class CameraDetections(Node):
 
         self.tf_broadcaster.sendTransform(t)
 
+    def image_to_field(self, x_img, y_img, H):
+        pt_img = np.array([[[x_img, y_img]]])
+        pt_field = cv2.perspectiveTransform(pt_img, H)
+        x_field, y_field = pt_field[0][0]
+        return x_field, y_field
+
+
     def model_use(self):
         if self.image is None:
             self.get_logger().warn("No image received yet")
             return None
         
         frame = self.image
-        results = self.yolo_model.track(frame, verbose=False, classes=0, show=False, tracker="bytetrack.yaml")
+        results = self.yolo_model(frame, verbose=False, classes=0, tracker="bytetrack.yaml")
         
         for result in results:
             for box in result.boxes:
                 x, y, w, h = [round(i) for i in box.xywh[0].tolist()]
                 confidence = box.conf.item()
 
-                if confidence > CONF_THRESH:
-                    id = box.id
 
-                    #GET ORIENTATION
+                if confidence > CONF_THRESH:
+                    id = box.id.item()
+                    #Robot position ---------------------------------------------------------
+                    x_center = (x + w) / 2
+                    y_center = (y + h) / 2
+
+                    #Convert to field coordinates
+                    x_field, y_field = self.image_to_field(x_center, y_center, self.homography)
+
+                    text = f"({x_field:.1f}, {y_field:.1f})"
+                    cv2.putText(frame, text, (int(x_center), int(y_center)),cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+                    
+                    #GET ORIENTATION --------------------------------------------------------
                     angle_degrees = 180 #DUMMY ANGLE, IMPLEMENT LOGIC FOR ANGLES
                     yaw = math.radians(angle_degrees)
                     roll, pitch = 0.0, 0.0
                     #------------------------------------------------------------------------
-
-                    self.tf_helper(id, x, y, roll, pitch, yaw)
+                    
+                    #Send robot transforms
+                    self.tf_helper(id, x_center, y_center, roll, pitch, yaw)
 
 def main(args=None):
     rclpy.init(args=args)
