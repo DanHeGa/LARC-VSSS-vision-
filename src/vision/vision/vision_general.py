@@ -22,6 +22,13 @@ import torch
 
 device = 'cuda' if torch.cuda.is_available() else  'cpu'
 
+colors = {
+    "green": np.load("src\vision/utils/LUTs/lut_green.npy"),
+    "blue": np.load("src\vision/utils/LUTs/lut_blue.npy"),
+    "pink": np.load("src\vision/utils/LUTs/lut_pink.npy"),
+    "red": np.load("src\vision/utils/LUTs/lut_red.npy")
+}
+
 class CameraDetections(Node):
     def __init__(self):
         super().__init__('camera_detections')
@@ -39,6 +46,47 @@ class CameraDetections(Node):
         self.homography = np.load("homography.npy")
         self.get_logger().info("Starting model node/general vision node")
         #self.timer = self.create_timer(0.1, self.timer_callback)
+
+    def orientation(self, img):
+        scale = 6
+        img = cv2.resize(img, None, fx=scale, fy=scale)
+
+        h, w, _ = img.shape
+        img_center = (w // 2, h // 2)
+
+        img_yuv = cv2.cvtColor(img, cv2.COLOR_BGR2YUV)
+        u = img_yuv[:, :, 1]
+        v = img_yuv[:, :, 2]
+
+        centers = []
+
+        for color_name, lut in colors.items():
+            mask = lut[v, u]
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            for cnt in contours:
+                area = cv2.contourArea(cnt)
+                if area > 1800:  # ignorar ruido pequeño
+                    M = cv2.moments(cnt)
+                    if M["m00"] != 0:
+                        cx = int(M["m10"] / M["m00"])
+                        cy = int(M["m01"] / M["m00"])
+                        centers.append((cx, cy, color_name, area))
+                    
+        filtered_centers = sorted(centers, key=lambda x: x[3], reverse=True)[:2]
+
+        angle = None
+        print(len(filtered_centers))
+        if len(filtered_centers) >= 2:
+            (x1, y1, c1, area), (x2, y2, c2, area) = filtered_centers
+
+            mid_x = (x1 + x2) // 2
+            mid_y = (y1 + y2) // 2
+
+            dx = mid_x - img_center[0]
+            dy = img_center[1] - mid_y
+            angle = math.degrees(math.atan2(dy, dx))
+
+            return angle
 
     def image_callback(self, data):
         """Callback to receive image from camera"""
@@ -103,8 +151,8 @@ class CameraDetections(Node):
                     text = f"({x_field:.1f}, {y_field:.1f})"
                     cv2.putText(frame, text, (int(x_center), int(y_center)),cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
                     #GET ORIENTATION --------------------------------------------------------
-                    # angle_degrees = get_angle()
-                    yaw = math.radians(100)         #(angle_degrees)
+                    angle_degrees = self.orientation(roi)#DUMMY ANGLE, IMPLEMENT LOGIC FOR ANGLES
+                    yaw = math.radians(angle_degrees)
                     roll, pitch = 0.0, 0.0
                     #------------------------------------------------------------------------
                     #Send robot transforms
