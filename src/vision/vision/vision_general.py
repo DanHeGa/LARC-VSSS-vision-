@@ -20,6 +20,11 @@ import math
 import numpy as np
 import torch
 
+"""
+    Node to take camera input and detect robots position and orientation 
+    as well as ball position in real field coordinates
+"""
+
 device = 'cuda' if torch.cuda.is_available() else  'cpu'
 
 colors = {
@@ -34,16 +39,85 @@ kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size)
 
 orange = np.load("/home/dany/ros2_vision_ws/src/vision/utils/LUTs/lut_orange.npy")
 
+width = 640
+height = 480
+
+objectivePoints = np.float32([[0, 0], [0,height], [width, height], [width, 0]])
+real_field_coors = [[0,0],
+                    [0, 130],
+                    [150, 130],
+                    [150, 0]]
+
+clicked_points = []
+coors_clicked = []
+
+def mouse_callback(event, x, y, _, __):
+    """
+    Callback function to capture mouse clicks and store the clicked points.
+    
+    Args:
+        event (int): Type of mouse event (e.g., left button click).
+        x (int): X-coordinate of the mouse click.
+        y (int): Y-coordinate of the mouse click.
+        _ (int): Unused parameter.
+        __ (int): Unused parameter.
+    """
+    if event == cv2.EVENT_LBUTTONDOWN:
+        print(f"Clicked: {x}, {y}")
+        clicked_points.append((x, y))
+
+def getHomography(img, realCoor):
+    """
+    Computes the homography matrix based on user-clicked points and real-world coordinates.
+    
+    Args:
+        cap (cv2.VideoCapture): Video capture object for live feed.
+        realCoor (list): List of real-world coordinates corresponding to the clicked points.
+    
+    Returns:
+        ndarray: Homography matrix mapping pixel coordinates to real-world coordinates.
+    """
+    global clicked_points
+    clicked_points = []
+
+    cv2.namedWindow("Calibration")
+    cv2.setMouseCallback("Calibration", mouse_callback)
+
+    while(len(clicked_points) < 4):
+        img_copy = img.copy()
+        cv2.putText(img_copy, f"Click on Point {len(clicked_points) + 1} out of 4", (50, 50), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
+
+        for pt in clicked_points:
+            cv2.circle(img_copy, pt, 2, (0, 0, 255), -1)
+        cv2.imshow("Calibration", img_copy)
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            raise Exception("Calibration aborted")
+    
+    cv2.destroyWindow("Calibration")
+
+    pxCoors = np.array(clicked_points, dtype=np.float32)
+    realCoors = np.array(realCoor, dtype=np.float32)
+
+    H, _ = cv2.findHomography(pxCoors, realCoors, cv2.RANSAC, 5.0)
+    np.save("homography.npy", H)
+    
+    matrix = cv2.getPerspectiveTransform(pxCoors, objectivePoints)
+    np.save("persMatrix.npy", matrix)
+
+    return H, matrix
 
 class CameraDetections(Node):
     def __init__(self):
         super().__init__('camera_detections')
         self.bridge = CvBridge()
+        self.video_id = self.declare_parameter("Video_ID", 0)
+        self.get_logger().info("Camera id taken")
+        self.cap = cv2.VideoCapture(self.video_id.value)
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         self.yolo_model = YOLO(YOLO_LOCATION)  # Uncomment when YOLO/model is ready
         self.yolo_model.to(device)
-        self.camera_view = self.create_subscription(
-            Image, WARPED_VIEW_TOPIC, self.image_callback, 10
-        )
         self.model_view = self.create_publisher(
             Image, MODEL_VIEW_TOPIC, 10
         )
@@ -53,7 +127,47 @@ class CameraDetections(Node):
         self.perspectiveMatrix = np.load("persMatrix.npy")
         self.get_logger().info("Starting model node/general vision node")
         self.last_center = None
+        self.run()
         #self.timer = self.create_timer(0.1, self.timer_callback)
+
+    def run(self):
+        """
+        Get frames from camera(camera_id) and publish them.
+        """
+        while rclpy.ok():
+            success, frame = self.cap.read()
+            if not success:
+               self.get_logger().info("No frame captured.")
+               continue
+
+            self.image = frame
+            self.model_use()
+            self.ball_detection(frame)
+            
+        self.cap.release()
+        cv2.destroyAllWindows()
+
+    def warp_image(self, data):
+        if self.homography is not None:
+            # print(f"Homography -> {self.homography}")
+            warped_img = cv2.warpPerspective(data, self.perspectiveMatrix, (640, 480)) #see if it's better to have 640, 480
+            
+            # if len(coors_clicked) > 0 and self.homography is not None:
+            #     pt = np.array([[[coors_clicked[0][0], coors_clicked[0][1]]]], dtype=np.float32)
+            #     #because after warp used, reference system changed, so we need to inv to get the original one 
+            #     inverse_perspective = np.linalg.inv(self.perspectiveMatrix)
+            #     pt_original = cv2.perspectiveTransform(pt, inverse_perspective)
+
+            #     pt_transformed = cv2.perspectiveTransform(pt_original, self.homography)
+            #     x_real, y_real = pt_transformed[0][0]  # Coordenadas reales del campo
+                
+            #     #with non-opencv axis policy
+            #     cv2.putText(warped_img, f"Real: ({x_real:.1f}, {y_real:.1f})", (50, 50), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
+            #     cv2.putText(warped_img, f"Pixeles: ({x_img:.1f}, {y_img:.1f})", (50, 90), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
+            
+            warped_img = self.bridge.cv2_to_imgmsg(warped_img, encoding='bgr8')
+        else:
+            self.homography, self.perspectiveMatrix = getHomography(data, real_field_coors)
 
     def orientation(self, img):
         scale = 6
@@ -96,12 +210,6 @@ class CameraDetections(Node):
 
             return angle
 
-    def image_callback(self, data):
-        """Callback to receive image from camera"""
-        self.image = self.bridge.imgmsg_to_cv2(data, desired_encoding='bgr8')
-        self.model_use()
-        self.ball_detection(self.image)
-
     def tf_helper(self, id, x, y, roll, pitch, yaw):
         t = TransformStamped()
 
@@ -125,6 +233,7 @@ class CameraDetections(Node):
         pt_field = cv2.perspectiveTransform(pt_img, H)
         x_field, y_field = pt_field[0][0]
         return x_field, y_field
+
 
 
     def model_use(self):
@@ -172,14 +281,15 @@ class CameraDetections(Node):
                     roll, pitch = 0.0, 0.0
                     #------------------------------------------------------------------------
                     #Send robot transforms
-                    x_cm = x_center / 100
-                    y_cm = y_center / 100
+                    x_cm = x_field / 100
+                    y_cm = y_field / 100
 
                     self.tf_helper(f"robot_{id}", x_cm, y_cm, roll, pitch, yaw)
         msg = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')
         self.model_view.publish(msg)
 
-    def ball_detection(self, frame):
+    def ball_detection(self, img):
+        frame = img.copy()
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         h, s, v = cv2.split(hsv)
 
@@ -202,6 +312,8 @@ class CameraDetections(Node):
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
         # suavizado pequeño para bordes más lisos
         mask = cv2.medianBlur(mask, 5)
+        cv2.imshow("Mask", mask)
+        cv2.waitKey(1)
         
         # encontrar la pelota
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -238,6 +350,8 @@ class CameraDetections(Node):
         else:
             self.last_center = None
             self.get_logger().info("Ball not detected")
+        cv2.imshow("YES", frame)
+        cv2.waitKey(1)
         
 def main(args=None):
     rclpy.init(args=args)

@@ -8,9 +8,6 @@ from .vision_constants import (
     CAMERA_TOPIC,
     WARPED_VIEW_TOPIC
 )
-
-#TODO: Fix it because it only shows a black image
-
 width = 640
 height = 480
 
@@ -102,7 +99,7 @@ class ImageWarpChange(Node):
     def image_callback(self, data):
         cv_img = self.bridge.imgmsg_to_cv2(data, desired_encoding='bgr8')
         if self.homography is not None:
-            print(f"Homography -> {self.homography}")
+            # print(f"Homography -> {self.homography}")
             warped_img = cv2.warpPerspective(cv_img, self.perspectiveMatrix, (640, 480)) #see if it's better to have 640, 480
             
             # if len(coors_clicked) > 0 and self.homography is not None:

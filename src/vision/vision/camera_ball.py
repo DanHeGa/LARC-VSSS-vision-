@@ -29,7 +29,7 @@ class BallDetector(Node):
         self.persMatrix = np.load("/home/dany/ros2_vision_ws/persMatrix.npy")
 
         # Variables de OpenCV
-        path = "/home/dany/ros2_vision_ws/src/vision/utils/LUTs/lut_orange2_generated.npy"
+        path = "/home/dany/ros2_vision_ws/src/vision/utils/LUTs/lut_orange.npy"
         self.lut = np.load(path)
         self.kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (10, 10))
         self.last_center = None
