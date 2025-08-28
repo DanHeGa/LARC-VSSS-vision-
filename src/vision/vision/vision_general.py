@@ -120,16 +120,12 @@ class CameraDetections(Node):
         self.tf_broadcaster.sendTransform(t)
 
 
-    def image_to_field(self, x_img, y_img, H, perspectiveMatrix=None):
+    def image_to_field(self, x_img, y_img, H):
         pt_img = np.array([[[x_img, y_img]]], dtype=np.float32)
-        if perspectiveMatrix is not None:
-            inverse_perspective = np.linalg.inv(perspectiveMatrix)
-            pt_original = cv2.perspectiveTransform(pt_img, inverse_perspective)
-        else:
-            pt_original = pt_img
-        pt_field = cv2.perspectiveTransform(pt_original, H)
+        pt_field = cv2.perspectiveTransform(pt_img, H)
         x_field, y_field = pt_field[0][0]
         return x_field, y_field
+
 
     def model_use(self):
         if self.image is None:
