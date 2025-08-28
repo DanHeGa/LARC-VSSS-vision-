@@ -204,9 +204,15 @@ class CameraDetections(Node):
             mid_x = (x1 + x2) // 2
             mid_y = (y1 + y2) // 2
 
+            cv2.line(img, img_center, (mid_x, mid_y), (255, 255, 255), 2)
+            cv2.circle(img, (mid_x, mid_y), 6, (255, 255, 255), -1)
+
             dx = mid_x - img_center[0]
             dy = img_center[1] - mid_y
             angle = math.degrees(math.atan2(dy, dx))
+            self.get_logger().info(angle)
+            cv2.imshow("Orientacion", img)
+            cv2.waitKey(1)
 
             return angle
 
@@ -228,12 +234,16 @@ class CameraDetections(Node):
         self.tf_broadcaster.sendTransform(t)
 
 
-    def image_to_field(self, x_img, y_img, H):
+    def image_to_field(self, x_img, y_img, H, perspectiveMatrix=None):
         pt_img = np.array([[[x_img, y_img]]], dtype=np.float32)
-        pt_field = cv2.perspectiveTransform(pt_img, H)
+        if perspectiveMatrix is not None:
+            inverse_perspective = np.linalg.inv(perspectiveMatrix)
+            pt_original = cv2.perspectiveTransform(pt_img, inverse_perspective)
+        else:
+            pt_original = pt_img
+        pt_field = cv2.perspectiveTransform(pt_original, H)
         x_field, y_field = pt_field[0][0]
         return x_field, y_field
-
 
 
     def model_use(self):
