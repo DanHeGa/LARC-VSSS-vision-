@@ -144,7 +144,7 @@ class CameraDetections(Node):
                     y2 = int(y + h / 2)
                     roi = frame[y1:y2, x1:x2]
                     
-                    x_center = (x1 + x2) / 2 #this is a problem
+                    x_center = (x1 + x2) / 2 
                     y_center = (y1 + y2) / 2
 
                     # Dibuja el bounding box
@@ -153,8 +153,10 @@ class CameraDetections(Node):
                     conf_text = f"{confidence:.2f}"
                     cv2.putText(frame, conf_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
                     cv2.circle(frame, (int(x_center), int(y_center)), 4, (0, 0, 255), -1)
+                    
                     #Convert to field coordinates - this may be the problem !!
                     x_field, y_field = self.image_to_field(x_center, y_center, self.homography)
+                    
                     text = f"({x_field:.1f}, {y_field:.1f})"
                     cv2.putText(frame, text, (int(x_center), int(y_center)),cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
                     #GET ORIENTATION --------------------------------------------------------
