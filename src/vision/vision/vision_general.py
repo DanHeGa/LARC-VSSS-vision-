@@ -111,7 +111,7 @@ class CameraDetections(Node):
     def __init__(self):
         super().__init__('camera_detections')
         self.bridge = CvBridge()
-        self.video_id = self.declare_parameter("Video_ID", 0)
+        self.video_id = self.declare_parameter("Video_ID", 2)
         self.get_logger().info("Camera id taken")
         self.cap = cv2.VideoCapture(self.video_id.value)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
@@ -132,18 +132,20 @@ class CameraDetections(Node):
 
     def run(self):
         """
-        Get frames from camera(camera_id) and publish them.
+        Captura frames, los warpea y procesa detecciones sobre la imagen warpeada.
         """
         while rclpy.ok():
             success, frame = self.cap.read()
             if not success:
-               self.get_logger().info("No frame captured.")
-               continue
+                self.get_logger().info("No frame captured.")
+                continue
 
-            self.image = frame
+            # Warpea la imagen antes de procesar
+            warped_img = cv2.warpPerspective(frame, self.perspectiveMatrix, (width, height))
+            self.image = warped_img
             self.model_use()
-            self.ball_detection(frame)
-            
+            self.ball_detection(warped_img)
+
         self.cap.release()
         cv2.destroyAllWindows()
 
@@ -151,21 +153,7 @@ class CameraDetections(Node):
         if self.homography is not None:
             # print(f"Homography -> {self.homography}")
             warped_img = cv2.warpPerspective(data, self.perspectiveMatrix, (640, 480)) #see if it's better to have 640, 480
-            
-            # if len(coors_clicked) > 0 and self.homography is not None:
-            #     pt = np.array([[[coors_clicked[0][0], coors_clicked[0][1]]]], dtype=np.float32)
-            #     #because after warp used, reference system changed, so we need to inv to get the original one 
-            #     inverse_perspective = np.linalg.inv(self.perspectiveMatrix)
-            #     pt_original = cv2.perspectiveTransform(pt, inverse_perspective)
-
-            #     pt_transformed = cv2.perspectiveTransform(pt_original, self.homography)
-            #     x_real, y_real = pt_transformed[0][0]  # Coordenadas reales del campo
-                
-            #     #with non-opencv axis policy
-            #     cv2.putText(warped_img, f"Real: ({x_real:.1f}, {y_real:.1f})", (50, 50), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
-            #     cv2.putText(warped_img, f"Pixeles: ({x_img:.1f}, {y_img:.1f})", (50, 90), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
-            
-            warped_img = self.bridge.cv2_to_imgmsg(warped_img, encoding='bgr8')
+                  
         else:
             self.homography, self.perspectiveMatrix = getHomography(data, real_field_coors)
 
@@ -187,7 +175,7 @@ class CameraDetections(Node):
             contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             for cnt in contours:
                 area = cv2.contourArea(cnt)
-                if area > 1800:  # ignorar ruido pequeño
+                if area > 1800:
                     M = cv2.moments(cnt)
                     if M["m00"] != 0:
                         cx = int(M["m10"] / M["m00"])
@@ -208,9 +196,9 @@ class CameraDetections(Node):
             cv2.circle(img, (mid_x, mid_y), 6, (255, 255, 255), -1)
 
             dx = mid_x - img_center[0]
-            dy = img_center[1] - mid_y
+            dy = mid_y - img_center[1]
             angle = math.degrees(math.atan2(dy, dx))
-            self.get_logger().info(angle)
+            self.get_logger().info(f"Angle: {angle}")
             cv2.imshow("Orientacion", img)
             cv2.waitKey(1)
 
@@ -219,7 +207,7 @@ class CameraDetections(Node):
     def tf_helper(self, id, x, y, roll, pitch, yaw):
         t = TransformStamped()
 
-        qx, qy, qz, qw = euler.euler2quat(roll, pitch, yaw) #roll, pitch, yaw = radians
+        qx, qy, qz, qw = euler.euler2quat(yaw, pitch, roll, axes='sxyz') #roll, pitch, yaw = radians
         t.header.stamp = self.get_clock().now().to_msg()
         t.header.frame_id = "upper_left_corner"
         t.child_frame_id = id
@@ -235,14 +223,13 @@ class CameraDetections(Node):
 
 
     def image_to_field(self, x_img, y_img, H, perspectiveMatrix=None):
+        # Si la imagen ya está warpeada, no aplicar la inversa de perspectiveMatrix
         pt_img = np.array([[[x_img, y_img]]], dtype=np.float32)
-        if perspectiveMatrix is not None:
-            inverse_perspective = np.linalg.inv(perspectiveMatrix)
-            pt_original = cv2.perspectiveTransform(pt_img, inverse_perspective)
-        else:
-            pt_original = pt_img
-        pt_field = cv2.perspectiveTransform(pt_original, H)
-        x_field, y_field = pt_field[0][0]
+        inverse_perspective = np.linalg.inv(self.perspectiveMatrix)
+        pt_original = cv2.perspectiveTransform(pt_img, inverse_perspective)
+        pt_transformed = cv2.perspectiveTransform(pt_original, self.homography)
+        x_field, y_field = pt_transformed[0][0]  # Coordenadas reales del campo
+        # x_field, y_field = pt_field[0][0]
         return x_field, y_field
 
 
@@ -252,7 +239,7 @@ class CameraDetections(Node):
             return None
         frame = self.image.copy()
         results = self.yolo_model(frame, verbose=False, classes=0)
-        id_track = -1
+        id_track = 0
         for result in results:
             for box in result.boxes:
                 x, y, w, h = [round(i) for i in box.xywh[0].tolist()]
@@ -285,10 +272,10 @@ class CameraDetections(Node):
                     #GET ORIENTATION --------------------------------------------------------
                     angle_degrees = self.orientation(roi)
                     if angle_degrees is not None:
-                        yaw = math.radians(angle_degrees)
+                        yaw = math.radians(-angle_degrees)
                     else:
                         yaw = 0.0
-                    roll, pitch = 0.0, 0.0
+                    pitch, roll = 0.0, 0.0
                     #------------------------------------------------------------------------
                     #Send robot transforms
                     x_cm = x_field / 100
@@ -351,12 +338,18 @@ class CameraDetections(Node):
             
         if chosen_ellipse is not None:
             cv2.ellipse(frame, chosen_ellipse, (0, 255, 0), 2)
-            self.last_center = chosen_ellipse[0] 
+            self.last_center = chosen_ellipse[0]
             (x, y) = self.last_center
             cv2.circle(frame, (int(x), int(y)), 5, (0, 0, 255), -1)
             self.get_logger().info("Ball center: " + str(self.last_center))
+
             real_x, real_y = self.image_to_field(x, y, self.homography)
-            self.tf_helper("Ball", real_x, real_y, 0.0, 0.0, 0.0)
+            # Mostrar las coordenadas reales junto al círculo verde
+            text = f"({real_x:.1f}, {real_y:.1f})"
+            cv2.putText(frame, text, (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+            cm_x  = real_x / 100 
+            cm_y = real_y / 100
+            self.tf_helper("Ball", cm_x, cm_y, 0.0, 0.0, 0.0)
         else:
             self.last_center = None
             self.get_logger().info("Ball not detected")

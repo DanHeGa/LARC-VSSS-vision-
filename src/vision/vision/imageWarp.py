@@ -101,20 +101,6 @@ class ImageWarpChange(Node):
         if self.homography is not None:
             # print(f"Homography -> {self.homography}")
             warped_img = cv2.warpPerspective(cv_img, self.perspectiveMatrix, (640, 480)) #see if it's better to have 640, 480
-            
-            # if len(coors_clicked) > 0 and self.homography is not None:
-            #     pt = np.array([[[coors_clicked[0][0], coors_clicked[0][1]]]], dtype=np.float32)
-            #     #because after warp used, reference system changed, so we need to inv to get the original one 
-            #     inverse_perspective = np.linalg.inv(self.perspectiveMatrix)
-            #     pt_original = cv2.perspectiveTransform(pt, inverse_perspective)
-
-            #     pt_transformed = cv2.perspectiveTransform(pt_original, self.homography)
-            #     x_real, y_real = pt_transformed[0][0]  # Coordenadas reales del campo
-                
-            #     #with non-opencv axis policy
-            #     cv2.putText(warped_img, f"Real: ({x_real:.1f}, {y_real:.1f})", (50, 50), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
-            #     cv2.putText(warped_img, f"Pixeles: ({x_img:.1f}, {y_img:.1f})", (50, 90), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
-            
             warped_img = self.bridge.cv2_to_imgmsg(warped_img, encoding='bgr8')
             self.publisher.publish(warped_img)
         else:
