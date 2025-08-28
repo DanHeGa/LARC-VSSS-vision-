@@ -32,7 +32,7 @@ colors = {
 kernel_size = 10
 kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
 
-orange = np.load("/home/dany/ros2_vision_ws/src/vision/utils/LUTs/lut_orange2_generated.npy")
+orange = np.load("/home/dany/ros2_vision_ws/src/vision/utils/LUTs/lut_orange.npy")
 
 
 class CameraDetections(Node):
