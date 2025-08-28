@@ -80,7 +80,8 @@ def getHomography(img, realCoor):
     np.save("homography.npy", H)
     
     matrix = cv2.getPerspectiveTransform(pxCoors, objectivePoints)
-    
+    np.save("persMatrix.npy", matrix)
+
     return H, matrix
 
 class ImageWarpChange(Node):
@@ -101,32 +102,28 @@ class ImageWarpChange(Node):
     def image_callback(self, data):
         cv2.setMouseCallback("Warped", coor_display)
         cv_img = self.bridge.imgmsg_to_cv2(data, desired_encoding='bgr8')
-        frame_resized = cv2.resize(cv_img, None, fx=0.5, fy=0.5)
         if self.homography is not None:
             print(f"Homography -> {self.homography}")
-            warped_img = cv2.warpPerspective(frame_resized, self.perspectiveMatrix, (640, 480)) #see if it's better to have 640, 480
+            warped_img = cv2.warpPerspective(cv_img, self.perspectiveMatrix, (640, 480)) #see if it's better to have 640, 480
             
-            if len(coors_clicked) > 0 and self.homography is not None:
-                pt = np.array([[[coors_clicked[0][0], coors_clicked[0][1]]]], dtype=np.float32)
-                #because after warp used, reference system changed, so we need to inv to get the original one 
-                inverse_perspective = np.linalg.inv(self.perspectiveMatrix)
-                pt_original = cv2.perspectiveTransform(pt, inverse_perspective)
-                x_img, y_img = pt[0][0]  # Coordenadas en imagen original (OpenCV)
+            # if len(coors_clicked) > 0 and self.homography is not None:
+            #     pt = np.array([[[coors_clicked[0][0], coors_clicked[0][1]]]], dtype=np.float32)
+            #     #because after warp used, reference system changed, so we need to inv to get the original one 
+            #     inverse_perspective = np.linalg.inv(self.perspectiveMatrix)
+            #     pt_original = cv2.perspectiveTransform(pt, inverse_perspective)
+            #     x_img, y_img = pt[0][0]  # Coordenadas en imagen original (OpenCV)
 
-                pt_transformed = cv2.perspectiveTransform(pt_original, self.homography)
-                x_real, y_real = pt_transformed[0][0]  # Coordenadas reales del campo
+            #     pt_transformed = cv2.perspectiveTransform(pt_original, self.homography)
+            #     x_real, y_real = pt_transformed[0][0]  # Coordenadas reales del campo
                 
-                #with non-opencv axis policy
-                cv2.putText(warped_img, f"Real: ({x_real:.1f}, {y_real:.1f})", (50, 50), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
-                cv2.putText(warped_img, f"Pixeles: ({x_img:.1f}, {y_img:.1f})", (50, 90), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
+            #     #with non-opencv axis policy
+            #     cv2.putText(warped_img, f"Real: ({x_real:.1f}, {y_real:.1f})", (50, 50), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
+            #     cv2.putText(warped_img, f"Pixeles: ({x_img:.1f}, {y_img:.1f})", (50, 90), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
             
-            cv2.imshow("Warped", warped_img)
-            cv2.waitKey(1) 
             warped_img = self.bridge.cv2_to_imgmsg(warped_img, encoding='bgr8')
             self.publisher.publish(warped_img)
         else:
-            self.homography, self.perspectiveMatrix = getHomography(frame_resized, real_field_coors)
-
+            self.homography, self.perspectiveMatrix = getHomography(cv_img, real_field_coors)
 
 def main(args=None):
     rclpy.init(args=args)

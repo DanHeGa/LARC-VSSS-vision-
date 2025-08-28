@@ -22,7 +22,8 @@ setup(
         'console_scripts': [
             'camera_input = vision.camera_input:main',
             'image_warp = vision.imageWarp:main',
-            'model_use = vision.vision_general:main'
+            'model_use = vision.vision_general:main',
+            'ball_detect = vision.camera_ball:main'
         ],
     },
 )

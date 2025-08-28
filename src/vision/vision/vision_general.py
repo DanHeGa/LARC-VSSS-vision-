@@ -18,12 +18,16 @@ from geometry_msgs.msg import TransformStamped
 import transforms3d.euler as euler
 import math
 import numpy as np
+import torch
+
+device = 'cuda' if torch.cuda.is_available() else  'cpu'
 
 class CameraDetections(Node):
     def __init__(self):
         super().__init__('camera_detections')
         self.bridge = CvBridge()
         self.yolo_model = YOLO(YOLO_LOCATION)  # Uncomment when YOLO/model is ready
+        self.yolo_model.to(device)
         self.camera_view = self.create_subscription(
             Image, WARPED_VIEW_TOPIC, self.image_callback, 10
         )
@@ -75,37 +79,36 @@ class CameraDetections(Node):
             for box in result.boxes:
                 x, y, w, h = [round(i) for i in box.xywh[0].tolist()]
                 confidence = box.conf.item()
+                
                 if confidence > CONF_THRESH:
                     id = id_track + 1
                     #Robot position ---------------------------------------------------------
-                    x_center = (x + w) / 2 #this is a problem
-                    y_center = (y + h) / 2
-
                     x1 = int(x - w / 2)
                     y1 = int(y - h / 2)
                     x2 = int(x + w / 2)
                     y2 = int(y + h / 2)
+                    roi = frame[y1:y2, x1:x2]
+                    
+                    x_center = (x1 + x2) / 2 #this is a problem
+                    y_center = (y1 + y2) / 2
 
                     # Dibuja el bounding box
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                     # Opcional: muestra la confianza
                     conf_text = f"{confidence:.2f}"
                     cv2.putText(frame, conf_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                    cv2.circle(frame, (int(x_center), int(y_center)), 8, (0, 0, 255), -1)
+                    cv2.circle(frame, (int(x_center), int(y_center)), 4, (0, 0, 255), -1)
                     #Convert to field coordinates - this may be the problem !!
                     x_field, y_field = self.image_to_field(x_center, y_center, self.homography)
                     text = f"({x_field:.1f}, {y_field:.1f})"
                     cv2.putText(frame, text, (int(x_center), int(y_center)),cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
                     #GET ORIENTATION --------------------------------------------------------
-                    angle_degrees = 180 #DUMMY ANGLE, IMPLEMENT LOGIC FOR ANGLES
-                    yaw = math.radians(angle_degrees)
+                    # angle_degrees = get_angle()
+                    yaw = math.radians(100)         #(angle_degrees)
                     roll, pitch = 0.0, 0.0
                     #------------------------------------------------------------------------
                     #Send robot transforms
                     self.tf_helper(id, x_center, y_center, roll, pitch, yaw)
-        # Mostrar el frame anotado siempre, aunque no haya detecciones
-        cv2.imshow("Model", frame)
-        cv2.waitKey(1)
         msg = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')
         self.model_view.publish(msg)
 

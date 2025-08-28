@@ -23,6 +23,8 @@ class CameraFrames(Node):
         )
         self.get_logger().info("CameraFrames node has started.")
         self.cap = cv2.VideoCapture(self.video_id.value)
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         self.run()
 
     def run(self):
@@ -38,9 +40,6 @@ class CameraFrames(Node):
             image = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')
             self.publisher_.publish(image)
             frame_resized = cv2.resize(frame, None, fx=0.5, fy=0.5)
-            cv2.imshow("Camera Feed", frame_resized)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
         self.cap.release()
         cv2.destroyAllWindows()
 
