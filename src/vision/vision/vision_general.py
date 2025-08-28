@@ -29,6 +29,13 @@ colors = {
     "red": np.load("/home/dany/ros2_vision_ws/src/vision/utils/LUTs/lut_red.npy")
 }
 
+kernel_size = 10
+kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+
+orange = np.load("lut_orange2_generated.npy"  )
+last_center = None
+
+
 class CameraDetections(Node):
     def __init__(self):
         super().__init__('camera_detections')
@@ -93,13 +100,14 @@ class CameraDetections(Node):
         """Callback to receive image from camera"""
         self.image = self.bridge.imgmsg_to_cv2(data, desired_encoding='bgr8')
         self.model_use()
+        self.ball_detection(self.image)
 
-    def tf_helper(self, robot_id, x, y, roll, pitch, yaw):
+    def tf_helper(self, id, x, y, roll, pitch, yaw):
         t = TransformStamped()
 
         qx, qy, qz, qw = euler.euler2quat(roll, pitch, yaw) #roll, pitch, yaw = radians
         t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = "upper_left_corner"#CHECK IF THIS IS THE NAME-------------------------------------------------
+        t.header.frame_id = "upper_left_corner"
         t.child_frame_id = f"robot_{robot_id}"
         t.transform.translation.x = float(x) 
         t.transform.translation.y = float(y)
@@ -175,6 +183,66 @@ class CameraDetections(Node):
         msg = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')
         self.model_view.publish(msg)
 
+    def ball_detection(self, frame):
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        h, s, v = cv2.split(hsv)
+
+        # Bajar brillo
+        v = np.clip(v - 40, 0, 255)
+
+        hsv_darker = cv2.merge([h, s, v])
+        frame = cv2.cvtColor(hsv_darker, cv2.COLOR_HSV2BGR)
+
+        yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV)
+        U = yuv[:, :, 1]
+        V = yuv[:, :, 2]
+
+        mask = orange[V, U]
+
+        # Filtrado
+        # quita puntitos de ruido
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
+        # rellena agujeros pequeños dentro de la pelota
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+        # suavizado pequeño para bordes más lisos
+        mask = cv2.medianBlur(mask, 5)
+        
+        # encontrar la pelota
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        possible_ellipses = []
+
+        for cnt in contours:
+            if len(cnt) >= 4: 
+                area = cv2.contourArea(cnt)
+                if area > 300 and area < 3000:  # se ajusta dependiendo del tamaño esperado
+                    ellipse = cv2.fitEllipse(cnt)
+                    possible_ellipses.append(ellipse)
+                    
+        chosen_ellipse = None
+
+        if possible_ellipses:
+            if last_center is None:
+                chosen_ellipse = max(possible_ellipses, key=lambda e: np.pi * (e[1][0] / 2) * (e[1][1] / 2))
+            else:
+                def distance(e):
+                    center = e[0]
+                    return np.linalg.norm(np.array(center) - np.array(last_center))
+                
+                chosen_ellipse = min(possible_ellipses, key=distance)
+            
+        if chosen_ellipse is not None:
+            cv2.ellipse(frame, chosen_ellipse, (0, 255, 0), 2)
+            last_center = chosen_ellipse[0] 
+            (x, y) = last_center
+            cv2.circle(frame, (int(x), int(y)), 5, (0, 0, 255), -1)
+            self.get_logger().info("Ball center: " + str(last_center))
+            real_x, real_y = self.image_to_field(x, y, self.homography)
+            self.tf_helper("Ball", real_x, real_y, 0.0, 0.0, 0.0)
+        else:
+            last_center = None
+            self.get_logger().info("Ball not detected")
+        
 def main(args=None):
     rclpy.init(args=args)
     node = CameraDetections()
