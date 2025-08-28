@@ -32,8 +32,7 @@ colors = {
 kernel_size = 10
 kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
 
-orange = np.load("lut_orange2_generated.npy"  )
-last_center = None
+orange = np.load("/home/dany/ros2_vision_ws/src/vision/utils/LUTs/lut_orange2_generated.npy")
 
 
 class CameraDetections(Node):
@@ -53,6 +52,7 @@ class CameraDetections(Node):
         self.homography = np.load("homography.npy")
         self.perspectiveMatrix = np.load("persMatrix.npy")
         self.get_logger().info("Starting model node/general vision node")
+        self.last_center = None
         #self.timer = self.create_timer(0.1, self.timer_callback)
 
     def orientation(self, img):
@@ -108,7 +108,7 @@ class CameraDetections(Node):
         qx, qy, qz, qw = euler.euler2quat(roll, pitch, yaw) #roll, pitch, yaw = radians
         t.header.stamp = self.get_clock().now().to_msg()
         t.header.frame_id = "upper_left_corner"
-        t.child_frame_id = f"robot_{robot_id}"
+        t.child_frame_id = id
         t.transform.translation.x = float(x) 
         t.transform.translation.y = float(y)
         t.transform.translation.z = 0.0
@@ -179,7 +179,7 @@ class CameraDetections(Node):
                     x_cm = x_center / 100
                     y_cm = y_center / 100
 
-                    self.tf_helper(id, x_cm, y_cm, roll, pitch, yaw)
+                    self.tf_helper(f"robot_{id}", x_cm, y_cm, roll, pitch, yaw)
         msg = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')
         self.model_view.publish(msg)
 
@@ -215,32 +215,32 @@ class CameraDetections(Node):
         for cnt in contours:
             if len(cnt) >= 4: 
                 area = cv2.contourArea(cnt)
-                if area > 300 and area < 3000:  # se ajusta dependiendo del tamaño esperado
+                if area > 10 and area < 10000:  # se ajusta dependiendo del tamaño esperado
                     ellipse = cv2.fitEllipse(cnt)
                     possible_ellipses.append(ellipse)
                     
         chosen_ellipse = None
 
         if possible_ellipses:
-            if last_center is None:
+            if self.last_center is None:
                 chosen_ellipse = max(possible_ellipses, key=lambda e: np.pi * (e[1][0] / 2) * (e[1][1] / 2))
             else:
                 def distance(e):
                     center = e[0]
-                    return np.linalg.norm(np.array(center) - np.array(last_center))
+                    return np.linalg.norm(np.array(center) - np.array(self.last_center))
                 
                 chosen_ellipse = min(possible_ellipses, key=distance)
             
         if chosen_ellipse is not None:
             cv2.ellipse(frame, chosen_ellipse, (0, 255, 0), 2)
-            last_center = chosen_ellipse[0] 
-            (x, y) = last_center
+            self.last_center = chosen_ellipse[0] 
+            (x, y) = self.last_center
             cv2.circle(frame, (int(x), int(y)), 5, (0, 0, 255), -1)
-            self.get_logger().info("Ball center: " + str(last_center))
+            self.get_logger().info("Ball center: " + str(self.last_center))
             real_x, real_y = self.image_to_field(x, y, self.homography)
             self.tf_helper("Ball", real_x, real_y, 0.0, 0.0, 0.0)
         else:
-            last_center = None
+            self.last_center = None
             self.get_logger().info("Ball not detected")
         
 def main(args=None):

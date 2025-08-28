@@ -38,10 +38,10 @@ def mouse_callback(event, x, y, _, __):
         print(f"Clicked: {x}, {y}")
         clicked_points.append((x, y))
 
-def coor_display(event, x, y, _, __):
-    if event == cv2.EVENT_LBUTTONDOWN:
-        coors_clicked.clear()
-        coors_clicked.append((x, y))
+# def coor_display(event, x, y, _, __):
+#     if event == cv2.EVENT_LBUTTONDOWN:
+#         coors_clicked.clear()
+#         coors_clicked.append((x, y))
 
 def getHomography(img, realCoor):
     """
@@ -100,7 +100,6 @@ class ImageWarpChange(Node):
         self.perspectiveMatrix = None
 
     def image_callback(self, data):
-        cv2.setMouseCallback("Warped", coor_display)
         cv_img = self.bridge.imgmsg_to_cv2(data, desired_encoding='bgr8')
         if self.homography is not None:
             print(f"Homography -> {self.homography}")

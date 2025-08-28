@@ -70,6 +70,8 @@ class BallDetector(Node):
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, self.kernel, iterations=1)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self.kernel, iterations=1)
         mask = cv2.medianBlur(mask, 5)
+        cv2.imshow("Mask", mask)
+        cv2.waitKey(1)
 
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -77,7 +79,7 @@ class BallDetector(Node):
         for cnt in contours:
             if len(cnt) >= 4:
                 area = cv2.contourArea(cnt)
-                if 400 < area < 3000:
+                if 5 < area < 30000:
                     ellipse = cv2.fitEllipse(cnt)
                     possible_ellipses.append(ellipse)
 
@@ -99,13 +101,15 @@ class BallDetector(Node):
             self.get_logger().info(f"Ball center: {x}, {y}")
 
             #apply homography
-            self.image_to_field(x, y, self.H, self.persMatrix)
+            # self.image_to_field(x, y, self.H, self.persMatrix)
 
             # Publicar la transformación en tf
             self.publish_tf(x, y)
         else:
             self.get_logger().info("Ball not detected")
             self.last_center = None
+        cv2.imshow("YES", frame)
+        cv2.waitKey(1)
 
     def publish_tf(self, x, y):
         """
