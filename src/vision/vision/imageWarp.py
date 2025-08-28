@@ -111,7 +111,6 @@ class ImageWarpChange(Node):
             #     #because after warp used, reference system changed, so we need to inv to get the original one 
             #     inverse_perspective = np.linalg.inv(self.perspectiveMatrix)
             #     pt_original = cv2.perspectiveTransform(pt, inverse_perspective)
-            #     x_img, y_img = pt[0][0]  # Coordenadas en imagen original (OpenCV)
 
             #     pt_transformed = cv2.perspectiveTransform(pt_original, self.homography)
             #     x_real, y_real = pt_transformed[0][0]  # Coordenadas reales del campo

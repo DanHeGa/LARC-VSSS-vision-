@@ -23,10 +23,10 @@ import torch
 device = 'cuda' if torch.cuda.is_available() else  'cpu'
 
 colors = {
-    "green": np.load("src\vision/utils/LUTs/lut_green.npy"),
-    "blue": np.load("src\vision/utils/LUTs/lut_blue.npy"),
-    "pink": np.load("src\vision/utils/LUTs/lut_pink.npy"),
-    "red": np.load("src\vision/utils/LUTs/lut_red.npy")
+    "green": np.load("/home/dany/ros2_vision_ws/src/vision/utils/LUTs/lut_green.npy"),
+    "blue": np.load("/home/dany/ros2_vision_ws/src/vision/utils/LUTs/lut_blue.npy"),
+    "pink": np.load("/home/dany/ros2_vision_ws/src/vision/utils/LUTs/lut_pink.npy"),
+    "red": np.load("/home/dany/ros2_vision_ws/src/vision/utils/LUTs/lut_red.npy")
 }
 
 class CameraDetections(Node):
@@ -44,6 +44,7 @@ class CameraDetections(Node):
         self.image = None
         self.tf_broadcaster = TransformBroadcaster(self)
         self.homography = np.load("homography.npy")
+        self.perspectiveMatrix = np.load("persMatrix.npy")
         self.get_logger().info("Starting model node/general vision node")
         #self.timer = self.create_timer(0.1, self.timer_callback)
 
@@ -75,7 +76,7 @@ class CameraDetections(Node):
         filtered_centers = sorted(centers, key=lambda x: x[3], reverse=True)[:2]
 
         angle = None
-        print(len(filtered_centers))
+        # print(len(filtered_centers))
         if len(filtered_centers) >= 2:
             (x1, y1, c1, area), (x2, y2, c2, area) = filtered_centers
 
@@ -98,11 +99,11 @@ class CameraDetections(Node):
 
         qx, qy, qz, qw = euler.euler2quat(roll, pitch, yaw) #roll, pitch, yaw = radians
         t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = "world"
-        t.child_frame_id = f"robot{robot_id}"
+        t.header.frame_id = "upper_left_corner"#CHECK IF THIS IS THE NAME-------------------------------------------------
+        t.child_frame_id = f"robot_{robot_id}"
         t.transform.translation.x = float(x) 
         t.transform.translation.y = float(y)
-        t.transform.translation.z = 0.0 #check if true
+        t.transform.translation.z = 0.0
         t.transform.rotation.x = qx
         t.transform.rotation.y = qy
         t.transform.rotation.z = qz
@@ -110,9 +111,15 @@ class CameraDetections(Node):
 
         self.tf_broadcaster.sendTransform(t)
 
-    def image_to_field(self, x_img, y_img, H):
-        pt_img = np.array([[[x_img, y_img]]])
-        pt_field = cv2.perspectiveTransform(pt_img, H)
+
+    def image_to_field(self, x_img, y_img, H, perspectiveMatrix=None):
+        pt_img = np.array([[[x_img, y_img]]], dtype=np.float32)
+        if perspectiveMatrix is not None:
+            inverse_perspective = np.linalg.inv(perspectiveMatrix)
+            pt_original = cv2.perspectiveTransform(pt_img, inverse_perspective)
+        else:
+            pt_original = pt_img
+        pt_field = cv2.perspectiveTransform(pt_original, H)
         x_field, y_field = pt_field[0][0]
         return x_field, y_field
 
@@ -151,12 +158,18 @@ class CameraDetections(Node):
                     text = f"({x_field:.1f}, {y_field:.1f})"
                     cv2.putText(frame, text, (int(x_center), int(y_center)),cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
                     #GET ORIENTATION --------------------------------------------------------
-                    angle_degrees = self.orientation(roi)#DUMMY ANGLE, IMPLEMENT LOGIC FOR ANGLES
-                    yaw = math.radians(angle_degrees)
+                    angle_degrees = self.orientation(roi)
+                    if angle_degrees is not None:
+                        yaw = math.radians(angle_degrees)
+                    else:
+                        yaw = 0.0
                     roll, pitch = 0.0, 0.0
                     #------------------------------------------------------------------------
                     #Send robot transforms
-                    self.tf_helper(id, x_center, y_center, roll, pitch, yaw)
+                    x_cm = x_center / 100
+                    y_cm = y_center / 100
+
+                    self.tf_helper(id, x_cm, y_cm, roll, pitch, yaw)
         msg = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')
         self.model_view.publish(msg)
 

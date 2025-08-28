@@ -7,10 +7,10 @@ import rclpy
 from rclpy.node import Node
 from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
+import transforms3d.euler as euler
 from geometry_msgs.msg import TransformStamped
 from tf2_ros import TransformBroadcaster
-import tf_transformations
-
+# import tf_transformations
 
 class BallDetector(Node):
     def __init__(self):
@@ -25,9 +25,11 @@ class BallDetector(Node):
             10
         )
         self.tf_broadcaster = TransformBroadcaster(self)
+        self.H = np.load("/home/dany/ros2_vision_ws/homography.npy")
+        self.persMatrix = np.load("/home/dany/ros2_vision_ws/persMatrix.npy")
 
         # Variables de OpenCV
-        path = "lut_orange2_generated.npy"
+        path = "/home/dany/ros2_vision_ws/src/vision/utils/LUTs/lut_orange2_generated.npy"
         self.lut = np.load(path)
         self.kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (10, 10))
         self.last_center = None
@@ -37,6 +39,17 @@ class BallDetector(Node):
         """Callback cuando llega una imagen de la cámara"""
         self.image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
         self.process_image()
+
+    def image_to_field(self, x_img, y_img, H, perspectiveMatrix=None):
+        pt_img = np.array([[[x_img, y_img]]], dtype=np.float32)
+        if perspectiveMatrix is not None:
+            inverse_perspective = np.linalg.inv(perspectiveMatrix)
+            pt_original = cv2.perspectiveTransform(pt_img, inverse_perspective)
+        else:
+            pt_original = pt_img
+        pt_field = cv2.perspectiveTransform(pt_original, H)
+        x_field, y_field = pt_field[0][0]
+        return x_field, y_field
 
     def process_image(self):
         frame = self.image
@@ -80,9 +93,13 @@ class BallDetector(Node):
                 chosen_ellipse = min(possible_ellipses, key=distance)
 
         if chosen_ellipse is not None:
+            cv2.ellipse(frame, chosen_ellipse, (0, 255, 0), 2)
             self.last_center = chosen_ellipse[0]
             (x, y) = self.last_center
             self.get_logger().info(f"Ball center: {x}, {y}")
+
+            #apply homography
+            self.image_to_field(x, y, self.H, self.persMatrix)
 
             # Publicar la transformación en tf
             self.publish_tf(x, y)
@@ -91,8 +108,11 @@ class BallDetector(Node):
             self.last_center = None
 
     def publish_tf(self, x, y):
-        """Publica la posición de la pelota como un frame en tf"""
+        """
+        Publica la posición de la pelota como un frame en tf
+        """
         t = TransformStamped()
+
         t.header.stamp = self.get_clock().now().to_msg()
         t.header.frame_id = "world"
         t.child_frame_id = "ball"
@@ -101,15 +121,13 @@ class BallDetector(Node):
         t.transform.translation.x = float(x)
         t.transform.translation.y = float(y)
         t.transform.translation.z = 0.0
-
-        qx, qy, qz, qw = tf_transformations.quaternion_from_euler(0, 0, 0)
+        qx, qy, qz, qw = euler.euler2quat(0, 0, 0)
         t.transform.rotation.x = qx
         t.transform.rotation.y = qy
         t.transform.rotation.z = qz
         t.transform.rotation.w = qw
 
         self.tf_broadcaster.sendTransform(t)
-
 
 def main(args=None):
     rclpy.init(args=args)
